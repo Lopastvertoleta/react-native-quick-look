@@ -12,7 +12,7 @@
 
 @property UIView* previewView;
 @property QLPreviewController* previewCtrl;
-
+@property NSURL* fileURL;
 @end
 
 @implementation RNQuickLookView
@@ -52,7 +52,25 @@
 
 - (void)setUrl:(NSString *)urlString {
     _url = [urlString stringByRemovingPercentEncoding];
-    [self.previewCtrl refreshCurrentPreviewItem];
+    
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSURL* remoteFileURL = [NSURL URLWithString:[_url stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]];
+        if (!remoteFileURL) {
+            return;
+        }
+        NSString* fileName = [[_url lastPathComponent] stringByReplacingOccurrencesOfString:@"?dl=1" withString:@""];
+        NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString* docPath_ = [paths objectAtIndex:0];
+        NSString* filePath = [docPath_ stringByAppendingPathComponent:fileName];
+        
+        NSURL* fileURL = [NSURL fileURLWithPath:filePath];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) [[NSData dataWithContentsOfURL:remoteFileURL] writeToURL:fileURL atomically:NO];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setFileURL:fileURL];
+            [[self previewCtrl] refreshCurrentPreviewItem];
+        });
+    });
 }
 
 - (void)setAssetFileName:(NSString*)filename {
@@ -67,7 +85,8 @@
 }
 
 - (id <QLPreviewItem>)previewController:(QLPreviewController *)controller previewItemAtIndex:(NSInteger)index {
-    return [NSURL URLWithString:_url];
+    
+    return [self fileURL];
 }
 
 #pragma mark - QLPreviewControllerDelegate
